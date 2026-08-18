@@ -72,8 +72,15 @@ pointer_tbl = pa.table({
 
 INLINE, POINTER = path("scratch", "media_inline"), path("scratch", "media_pointer")
 reset(INLINE, POINTER)
-write_deltalake(INLINE, inline_tbl, mode="overwrite")
-write_deltalake(POINTER, pointer_tbl, mode="overwrite")
+# Write in batches to avoid "Upload aborted" errors on large writes via WSL
+batch_size = 50
+for batch_idx in range(0, N, batch_size):
+    end_idx = min(batch_idx + batch_size, N)
+    batch_inline = inline_tbl.slice(batch_idx, end_idx - batch_idx)
+    batch_pointer = pointer_tbl.slice(batch_idx, end_idx - batch_idx)
+    mode = "overwrite" if batch_idx == 0 else "append"
+    write_deltalake(INLINE, batch_inline, mode=mode)
+    write_deltalake(POINTER, batch_pointer, mode=mode)
 
 print(f"inline table : {human(du(INLINE)):>10}")
 print(f"pointer table: {human(du(POINTER)):>10}   (+ {human(du(BLOB_DIR))} of objects alongside)")
