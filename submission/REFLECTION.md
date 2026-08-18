@@ -1,26 +1,12 @@
 # Lab 18 — Reflection: Top 5 Lakehouse Anti-Patterns
 
-## Most Risky Anti-Pattern for Our Team: **Lifecycle Skew Between Lakehouse and External Index**
+**Riskiest anti-pattern for our team: lifecycle skew between the lakehouse and an external index** — exactly what NB7 reproduces.
 
-After completing this lab, the most dangerous pattern we would likely encounter is **syncing embeddings/vectors to an external index without subscribing to deletes**—exactly what NB7 demonstrates.
+We sync embeddings out to a vector index for latency, but most sync jobs are upsert-only. When a row is deleted from the lakehouse, nothing tells the index to forget it. The lakehouse looks clean; the index keeps serving the deleted content indefinitely. That is invisible until an audit or a GDPR/CCPA erasure request surfaces it — at which point it is a compliance violation, not a bug ticket.
 
-### Why This Is the Biggest Risk:
+It is also the hardest of the five anti-patterns to catch in review, because both systems report healthy independently. Small-file sprawl or missing Z-ORDER show up as slow queries; skew shows up as nothing, until someone asks "is this data really gone?"
 
-1. **Compliance Liability** — Once a data subject exercises their right to erasure (GDPR, CCPA), deleting from the lakehouse is mandatory. An out-of-sync external index that still returns erased content becomes a legal violation instantly.
-
-2. **Silent Data Leakage** — Unlike a crashed pipeline, lifecycle skew is *invisible*. The lakehouse is clean, but the vector index happily returns sensitive data until the next "sync" — which might never happen if sync is one-way upsert.
-
-3. **Harder to Fix Than It Looks** — Rebuilding the entire index from scratch is expensive. Change Data Feeds (CDF) are the answer, but many pipelines skip them because they add complexity.
-
-4. **Affects All Multimodal AI** — As models grow larger and multimodal RAG becomes standard, this pattern scales from "one embarrassing incident" to "enterprise-wide exposure."
-
-### Our Mitigation Strategy:
-
-- Store embeddings *in the table* whenever possible (cost permitting).
-- For external indices: subscribe to CDF deletes, not guessing from upsert-only syncs.
-- Audit sync pipeline contracts quarterly, especially before feature launches.
-
-**Lesson:** The system-of-record must own the delete contract. Everything else is just a cache.
+**Mitigation:** treat the lakehouse as the sole system of record for deletes. Subscribe external indices to Change Data Feed deletes rather than re-running upsert-only syncs, and add a periodic reconciliation job that diffs index membership against current table state.
 
 ---
 
